@@ -1,6 +1,7 @@
 #include <Wire.h>
 #include <Adafruit_TCS34725.h>
 #include "Cardu.h"
+#include <LiquidCrystal_I2C.h>
 // Create an instance of the sensor
 Adafruit_TCS34725 tcs = Adafruit_TCS34725( TCS34725_INTEGRATIONTIME_2_4MS, TCS34725_GAIN_4X);// used to be : TCS34725_INTEGRATIONTIME_50MS now : TCS34725_INTEGRATIONTIME_2_4MS
 int Ideal = 80;
@@ -77,29 +78,4 @@ TCA9548A(1);
 }
 
 }
-/*void loop() {          how to read the colors
-  // put your main code here, to run repeatedly:
- if (checkLine(6)==1)
- {
-   Serial.println("Found Line! in6");
-
-
- }
- else
-  Serial.println("On Field! in6");
-  delay(500);
-if (checkLine(7)==1)
- {
-   Serial.println("Found Line! in7");
-
-
- }
- else
-  Serial.println("On Field! in7");
-  delay(500);
-
-
-}*/
-
-
 

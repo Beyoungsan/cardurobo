@@ -1,4 +1,4 @@
-
+#include <LiquidCrystal_I2C.h>
 #include "Cardu.h"
 
 //HUSKYLENS green line >> SDA; blue line >> SCL

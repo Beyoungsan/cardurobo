@@ -1,12 +1,9 @@
-#include <utility>
+
 #include "Cardu.h"
-#include "arduino.h"
-#include "Extender.h"
-#include "motor.h"
-#include <math.h>
-#include <Adafruit_VCNL4040.h>
+
 Extender ext1;
 HUSKYLENS huskylens;
+//view in the same direction as the pcb 
 motor mot3(2,1,0); //top right
 motor mot4(4,3,5); //top left
 motor mot1(8,7,6); // buttom left
@@ -15,28 +12,33 @@ motor mot2(10,9,11); // buttom right
 //lcd 20x4
 LiquidCrystal_I2C lcd(0x27,20,4);
 
-
-/*view in the same direction as the pcb */
-static int preMillis = 0; 
+//last x val husky saw
+int indexBall = 0;
+int indexGoal = 0;
 
 //speed
 int IdealVelocity = 100;
-static int speed,speed1, speed2, speed3, speed4, speedL, speedR, speedF, speedB = IdealVelocity; // speeed for motor 1-4, for left, right, front and back
+int speed,speed1, speed2, speed3, speed4, speedL, speedR, speedF, speedB = IdealVelocity; // speeed for motor 1-4, for left, right, front and back
 
 //color sensores
-
 const int BackTcs = 6; // channel on multiplexer
 const int RTcs = 1; // channel on multiplexer
 const int LTcs = 7; // channel on multiplexer
 
-int Noam  = 0;
-int tempProx = 0;
-int LcdMillis = 0;
+int L_or_R = 0;// left - 0, R = 1.
 Cardu::Cardu()
 {
   
 }
 
+void Cardu::cardBegin(){
+  Serial.begin(115200);
+  Serial.println("started");
+  LcdMillis = millis();
+  mot1.begin();
+  lcd_begin();
+  }
+  
 void Cardu:: lcd_begin(){
  lcd.init();  
  lcd.backlight();
@@ -52,16 +54,6 @@ void Cardu:: lcd_begin(){
  lcd.setCursor(0, 0);
  lcd.print("MODE:");
 }
-
-void Cardu::begin(){
-  Serial.begin(115200);
-  Serial.println("started");
-  LcdMillis = millis();
-  //ext1.begin();
-  mot1.begin();
-  Noam  = 0;
-  lcd_begin();
-  }
 void Cardu::forward(int speed){
   mot1.clwise(speed);
   mot2.counterclwise(speed);
@@ -79,6 +71,13 @@ void Cardu::stop(){
   mot2.neutral();
   mot3.neutral();
   mot4.neutral();
+  }
+
+void Cardu::brecks(){
+  mot1.Brecks();
+  mot2.Brecks();
+  mot3.Brecks();
+  mot4.Brecks();
   }
 
 void Cardu::turnR(int speed){
@@ -118,91 +117,104 @@ void Cardu::diagBR(int speed){
   mot4.neutral();
   }
 
-void Cardu::Calc_Fsteer(){
-  //float ratio[4] = {1,1,1,1};
+/*void Cardu::calcSteer()
+{
   float x = check(ball_ID).xCenter;// can be between 0 to 320
   float y = check(ball_ID).yCenter;// can be between 0 to 240
   float Ratdis = ((float)(x - 160))/160; // returns a value between -1 to 1
-  /*Ratdis = map(Ratdis*(y),-240,240,-1,1);
-  Serial.println(Ratdis);*/
  Ratdis = Ratdis *(y*1.5 / 240);
   /*Serial.print("x:");
   Serial.println(x);
   Serial.print("Ratdis:");
-  Serial.println(Ratdis);*/
+  Serial.println(Ratdis);
   IdealVelocity = map(check(ball_ID).yCenter, 0, 240, 125, 50); 
   speedL = IdealVelocity*(1+Ratdis); // determins the ratio between left and right
   if(speedL > 255){speedL = 255;} // speed must be between 0 to 255 (2^8)
   speedR = IdealVelocity*(1-Ratdis);
   if(speedR > 255){speedR = 255;}
-  }
+}*/
 
-void Cardu::Calc_Side_steer(){
-  int x = check(ball_ID).xCenter; 
-  
+void Cardu::Calc_Side_steer(int speed, int kp){
+  float angle = get_gyro(); 
+  float error =  angle * kp;
+  if(L_or_R == 0){ // we are going left
+    if(error > 0){//make back strong
+      
+      speedF = speed - error;
+      speedB = speed + error;
+      if(speedF > 255){speedF = 255;} // speed must be between 0 to 255 (2^8)
+      if(speedF < 0){speedF = 0;}
+      if(speedB > 255){speedB = 255;} // speed must be between 0 to 255 (2^8)
+      if(speedB < 0){speedB = 0;}
+
+    }
+    else{// make front strong
+      
+      speedF = speed - error;
+      speedB = speed + error;
+      if(speedF > 255){speedF = 255;} // speed must be between 0 to 255 (2^8)
+      if(speedF < 0){speedF = 0;}
+      if(speedB > 255){speedB = 255;} // speed must be between 0 to 255 (2^8)
+      if(speedB < 0){speedB = 0;}
+    }
   }
+  else{// we are going left
+    if(error > 0){// make front strong
+      
+      speedF = speed + error;
+      speedB = speed - error;
+      if(speedF > 255){speedF = 255;} // speed must be between 0 to 255 (2^8)
+      if(speedF < 0){speedF = 0;}
+      if(speedB > 255){speedB = 255;} // speed must be between 0 to 255 (2^8)
+      if(speedB < 0){speedB = 0;}
+    }
+    else{//make back strong
+      
+      speedF = speed + error;
+      speedB = speed - error;
+      if(speedF > 255){speedF = 255;} // speed must be between 0 to 255 (2^8)
+      if(speedF < 0){speedF = 0;}
+      if(speedB > 255){speedB = 255;} // speed must be between 0 to 255 (2^8)
+      if(speedB < 0){speedB = 0;}
+    }
+  }
+  Serial.print("front : ");
+  Serial.println(speedF);
+  Serial.print("back : ");
+  Serial.println(speedB);
+}
+
 
   
-void Cardu::Move_pid(){
-  int speed = map(check(ball_ID).yCenter, 0, 220, 250, 30); 
-  speed1 = speed;
-  speed2 = speed;
-  speed3 = speed;
-  speed4 = speed;
-  }
+
+
 
 void Cardu::followBall(){
-  /*if(check(ball_ID).yCenter < 200) { 
-    Calc_Fsteer();
-    int r = speedR;
-    int l = speedL;
-  
-    mot1.clwise(r);
-    mot2.counterclwise(l);
-    mot4.clwise(r);
-    mot3.counterclwise(l);
-  }
-  else{
-    int x = check(ball_ID).xCenter;
-    if(x < 140){
-      goLeft(abs(160 - x));
-      Serial.println("L ");
-    }
-    else if(x < 180){
-      goRight(abs(160 - x));
-      Serial.println("R ");
-    }
-    else{
-   //forward with vcnl pid
-    forward(250);
-    Serial.println("vcnl");
-    }
-  }
-  */
-      int x = check(ball_ID).xCenter;
-      Calc_Fsteer();
-      int r = speedR;
-      int l = speedL;
+  int x = check(ball_ID).xCenter;
+  calc_steer();
+  int r = speedR;
+  int l = speedL;
 
-      mot1.clwise(r);
-      mot2.counterclwise(l);
-      mot4.clwise(r);
-      mot3.counterclwise(l);
-      }  
+  mot1.clwise(r);
+  mot2.counterclwise(l);
+  mot4.clwise(r);
+  mot3.counterclwise(l);
+  }  
+
 void Cardu::closeToBall(){
-  if(check(ball_ID).xCenter < 150){
+  if(check(ball_ID).xCenter < 140){
     turnL(30);
   }
-  else if(check(ball_ID).xCenter > 170){
+  else if(check(ball_ID).xCenter > 180){
     turnR(30);
   }
   else{
-    forward(70);
+    forward(50);
   }
 }
 
 
-int Cardu::IsOnField(){ // returns 1 if on field, 0 see a line and moves according to the line
+int Cardu::IsOnFieldST(){ // returns 1 if on field, 0 see a line and moves according to the line
   if(checkLine(RTcs) == 1 && checkLine(LTcs) == 1){
     backwrard(100);
     delay(500);
@@ -228,49 +240,62 @@ int Cardu::IsOnField(){ // returns 1 if on field, 0 see a line and moves accordi
   else{
     return 1; // good to go
   }
-  /*if(checkLine(LTcs) == 1){
-    backwrard(150);
-    Serial.println("going back");
+}
+int Cardu::IsOnFieldGK(){ // returns 1 if on field, 0 see a line and moves according to the line
+  if(checkLine(RTcs) == 1 && checkLine(LTcs) == 1){
+    backwrard(100);
+    delay(500);
+    return 0;
+  }
+  else if(checkLine(RTcs) == 1){
+    goLeft(100);
+    delay(500); 
+    return 0; 
+  }
+  else if(checkLine(LTcs) == 1){
+    goRight(100);
+    Serial.println("going right");
     delay(500);  
     return 0;
   }
-  else if(checkLine(BackTcs) == 1){
+  /*else if(checkLine(BackTcs) == 1){
     forward(100);
     Serial.println("going forward");
-    delay(500);  
+    delay(150);  
     return 0;
-  }
+  }*/
   else{
-    return 1 ; 
+    return 1; // good to go
   }
-  */
 }
 
 void Cardu::spinWithBall(int speed){
-  
+    if(indexGoal > 160)
+    {
     mot1.clwise(0);
     mot2.clwise(0);
     mot3.counterclwise(speed);
-    mot4.counterclwise(speed);
+    mot4.counterclwise(speed);}
+    else{
+    mot1.clwise(0);
+    mot2.clwise(0);
+    mot3.clwise(speed);
+    mot4.clwise(speed);}
   }
   
   
 
 int Cardu:: FindGoal(){
   int preMillis = millis();
-  if(IsOnField() == 1 && !(check(goal1_ID).command == COMMAND_RETURN_BLOCK)) {
+  if(IsOnFieldST() == 1 && !(check(goal1_ID).command == COMMAND_RETURN_BLOCK)) {
     spinWithBall(60);
     return 0;
   }
   return 1;
   
 }
-/*void Cardu::kick(){
-  forward(250);
-  delay(1000);
-  Noam = 0;
-}
-*/
+
+
 int Cardu::vcnlMoving(){
   int dis = GetProximity();
   if(dis < 11){
@@ -288,72 +313,63 @@ int Cardu::vcnlMoving(){
 
   return 1;
 }
+
+/*
+checking how close are we to the ball with vcnl sensor.
+-1 = error (husky problem)
+0 = doesn't see ball
+1 = see ball far, needs to go forward
+2 = close enough tp ball. kick
+*/
 int Cardu::checkProx(){
+  Serial.print("prox is:");
+  Serial.println(GetProximity());
   int dis = GetProximity();
   if(dis < 11){
     return 0 ; //doesnt see ball
   }
-  if(dis < 1000){
+  if(dis < 400){
     return 1;
   }
-  if(dis >= 1000){
+  if(dis >= 400){
     return 2; 
   }
   else{
     return -1;
   }
 }
-/*void Cardu::Calc_PIDsteer(int kp, int ki, int kd){
-  //float ratio[4] = {1,1,1,1};
-  float x = check(ball_ID).xCenter;// can be between 0 to 320
-  float y = check(ball_ID).yCenter;// can be between 0 to 240
-  float error = (x - 160); // returns a value between -1 to 1
-  unsigned long currentTime = micros();
-  double elapsedTime = (currentTime - previousTime) / 1000000.0
-
-  if (error * lastError < 0) {  // If error changes sign (direction), reset integral
-    integralflag = true;  // Set flag to indicate error has changed direction
-    cumError = 0;         // Reset cumulative error when direction changes
-    //Serial.println("Error changed direction, resetting integral accumulator.");
-  } else {
-    integralflag = false;  // Continue accumulating integral error
-  }
-  if (!integralflag){
-    cumError += error * elapsedTime;  // Compute integral (accumulate error over time)
-  }
- if (elapsedTime > 0) {  // Compute derivative deltaError/deltaTime, avoid dividing by 0
-    double rateError = (error - lastError) / elapsedTime;
-  double out = kp * error + ki * cumError + kd * rateError;
-
-    // Update for next iteration
-    lastError = error;              // Remember current error
-    previousTime = currentTime;     // Remember current time
-
-    // Limit the output for smoother operation
-    if (out > 254) { out = 254; }
-    if (out < -254) { out = -254; }
-    Serial.print("degrees = ");  Serial.println(degrees);
-    Serial.print("out value = ");  Serial.println(out);
-    return out;  // Return the PID output value
-}*/
 
 int Cardu::sideMove(){
   double x = check(ball_ID).xCenter;
-  double k = 1.5;
-  if(x < 140){
-    goLeft(int((160.0 - x)*k));
+  double k = 0.8;
+  if(x < 130){
+    L_or_R = 0;
+    Calc_Side_steer(int((160.0 - x)*k),1);
+    mot1.clwise(speedF);
+    mot2.clwise(speedF);
+    mot4.counterclwise(speedB);
+    mot3.counterclwise(speedB);
+
     return 1;
   }
-  else if(x > 180){
-    goRight(int((x - 160.0)*k));
+  else if(x > 190){
+    L_or_R = 1;
+    Calc_Side_steer(int((x - 160)*k),1);
+    mot1.counterclwise(speedF);
+    mot2.counterclwise(speedF);
+    mot4.clwise(speedB);
+    mot3.clwise(speedB);
     return 2;
   }
   else{
+    stop();
     return 0;
+
   }
 }
+
 void Cardu::GoalKeeper(){
-  if(IsOnField() == 1){
+  if(IsOnFieldGK() == 1){
     if(check(ball_ID).command == COMMAND_RETURN_BLOCK){
       if(sideMove() == 0 ){
         stop();//go to kick
@@ -363,7 +379,7 @@ void Cardu::GoalKeeper(){
   } 
 }
 
-int Cardu:: findBall(int speed, int preMillis)
+int Cardu:: findBall(int speed)
 {
   /*Serial.print("preMillis is:");
   Serial.println(preMillis);
@@ -371,6 +387,8 @@ int Cardu:: findBall(int speed, int preMillis)
   Serial.println(millis());
   Serial.print("time past is:");
   Serial.println(millis() - preMillis);*/
+  Serial.print("index is:");
+  Serial.println(indexBall);
   if (check(ball_ID).command == COMMAND_RETURN_BLOCK)
    return 1;
 
@@ -380,33 +398,54 @@ int Cardu:: findBall(int speed, int preMillis)
     return 1;
    backwrard(speed); 
   }
-  else if (millis() - preMillis < 5000)
+  else if (millis() - preMillis < 9000)// turning to the side I last saw the ball
   {
    if (check(ball_ID).command == COMMAND_RETURN_BLOCK)
     return 1;
-   turnR(speed/2); //instead of turn right, it will turn the direction it last saw the ball on husky - updated every timr on stat 1
+   if (indexBall > 160) 
+   turnR(speed/2); //it will turn the direction it last saw the ball on husky - updated every timr on stat 1
+   else
+   turnL(speed/2);
+
   }
-  else
-  stop();
-   
+  else if (millis() - preMillis < 16000)// turning to the other side 
+  {
+   if (check(ball_ID).command == COMMAND_RETURN_BLOCK)
+    return 1;
+   if (indexBall < 160)
+   turnR(speed/2); //it will turn the direction it last saw the ball on husky - updated every timr on stat 1
+   else
+   turnL(speed/2);
+
+  }
+  else{
+    preMillis = millis();
+  }
+
   return -1;
 }
-void Cardu:: lcd_stats(int s, int e, int g, int m){ 
-  Serial.print("back - ");
+
+void Cardu:: lcd_stats(){ 
+  /*Serial.print("back - ");
   Serial.println(back);
   Serial.print("left - ");
   Serial.println(left);
   Serial.print("right - ");
-  Serial.println(right);
+  Serial.println(right);*/
   lcd.setCursor(0, 0);
   lcd.print("MODE:");
-  if (m==0) {
+  if (status==0) {
    lcd.setCursor(7, 0);
    lcd.print("Search Ball");
   }
-  else if (m==1){
+  else if (status==1){
    lcd.setCursor(7, 0);
    lcd.print("Follow Ball");
+  }
+  else if (status==3)
+  {
+   lcd.setCursor(7, 0);
+   lcd.print("backwards");
   }
    else{
    lcd.setCursor(7, 0);
@@ -450,13 +489,220 @@ void Cardu:: lcd_stats(int s, int e, int g, int m){
   lcd.print("V");
   lcd.setCursor(15,3);
   lcd.print("V");
-}
-
-void Cardu::lcdPrint(int mode){
+  }
+void Cardu::lcdPrint(){
   if(millis() - LcdMillis > 400){
-    lcd_stats(1,2, 3, mode);
+    lcd_stats();
      LcdMillis = millis();
 
   }
 
+  }
+void Cardu::STbegin()
+  {
+  cardBegin();
+  Wire.begin();
+  tcsBegin();
+  begin_husky();
+  vcnlBegin();
+  loadKick();
+  delay(1000);
+  holdKick();
+  }
+void Cardu::GKbegin()
+  {
+  cardBegin();
+  Wire.begin();
+  tcsBegin();
+  begin_husky();
+  vcnlBegin();
+  begin_gyro1();
+  loadKick();
+  delay(1000);
+  holdKick();
+  begin_gyro2();
+  }
+
+
+void Cardu::STloop(){
+    Serial.print("stat is : ");
+    Serial.println(status);
+    lcdPrint();
+
+  if(check(goal1_ID).command == COMMAND_RETURN_BLOCK)
+    indexGoal = check(goal1_ID).xCenter;
+  if(IsOnFieldST() == 1){
+      switch(status){
+
+        case 0 : {
+          Serial.print("preMillis is:");
+          Serial.println(preMillis);
+          Serial.print("currMillis is:");
+          Serial.println(millis());
+          Serial.print("time past is:");
+          Serial.println(millis() - preMillis);
+
+          if (findBall(60) == 1)
+          {
+            Serial.println("found ball!");
+            status = 1;
+          } // look for ball
+          break;
+        }
+        case 1 : {
+          if(check(ball_ID).command == COMMAND_RETURN_BLOCK)
+            indexBall = check(ball_ID).xCenter;
+
+          if(check(ball_ID).yCenter < 200){
+            followBall();
+            }
+          else{
+            closeToBall();
+            }
+          if(checkProx() > 0){
+            status = 2;
+          }
+          else if(!(check(ball_ID).command == COMMAND_RETURN_BLOCK)){
+            status = 0;
+            preMillis = millis();
+            Serial.println("in2");
+          }
+          
+          break;
+        }
+        case 2 : { 
+          if(checkProx() == 0 ){
+            status = 0;
+            preMillis = millis();
+          }
+          else if(checkProx() == 1){
+            forward(60);// was 45
+          }
+          else if(checkProx() == 2){
+            brecks();
+            preMillis = (millis());
+            while( (millis() - preMillis < 10000) && (check(goal1_ID).xCenter > 180 || check(goal1_ID).xCenter < 140) && checkProx() != 0){
+              spinWithBall(80);
+              Serial.println(check(goal1_ID).xCenter);
+
+            }
+            if(check(goal1_ID).command == COMMAND_RETURN_BLOCK){
+            brecks();
+            delay(1000);
+            kick();
+            loadKick();
+            delay(1000);
+            holdKick();
+            }
+            status = 0 ;
+            preMillis = millis();
+        
+          }
+          break;
+        }
+      }
+    }
+  } 
+void Cardu::GKloop(){
+  lcdPrint();
+  Serial.print("stat is - ");
+  Serial.println(status);
+  if(IsOnFieldGK() == 1){
+      switch(status){
+
+        case 0 : {
+          Serial.print("preMillis is:");
+          Serial.println(preMillis);
+          Serial.print("currMillis is:");
+          Serial.println(millis());
+          Serial.print("time past is:");
+          Serial.println(millis() - preMillis);
+          selfAlign();
+          if (check(ball_ID).command == COMMAND_RETURN_BLOCK)
+          {
+            Serial.println("found ball!");
+            status = 1;
+          } // look for ball
+          break;
+        }
+        case 1 : {
+    
+
+          if(check(ball_ID).yCenter < 200){
+            sideMove();
+            }
+          else{
+            closeToBall();
+            }
+          if(checkProx() > 0){
+            status = 2;
+          }
+          else if(!(check(ball_ID).command == COMMAND_RETURN_BLOCK)){
+            status = 3;
+            preMillis = millis();
+            Serial.println("in2");
+          }
+          
+          break;
+        }
+        case 2 : { 
+          if(checkProx() == 0 ){
+            status = 3;
+            preMillis = millis();
+          }
+          else if(checkProx() == 1){
+            forward(60);
+          }
+          else if(checkProx() == 2){
+          
+            brecks();
+            //delay(1000);
+            kickG();
+            loadKick();
+            delay(1000);
+            holdKick();
+            preMillis = (millis());
+           
+            /*while(checkLine(6) != 1 && millis() - preMillis < 15000) // instead, move to 3.
+            {
+              backwrard(60);
+            }*/
+            
+            status = 3;
+            preMillis = millis();
+            }
+          break;
+          }
+        case 3 : {
+          preMillis = millis();
+          while((get_gyro() > 8 || get_gyro() < -8)&&!(check(ball_ID).command == COMMAND_RETURN_BLOCK)){
+            selfAlign();}
+          while(!(check(ball_ID).command == COMMAND_RETURN_BLOCK) &&!(checkLine(6) == 1) && millis() - preMillis < 10000){
+            backwrard(75);
+          }
+          if(check(ball_ID).command == COMMAND_RETURN_BLOCK){
+            status = 1;
+          }
+          else{
+            status = 0;
+          }
+          
+
+          break;
+        }
+
+        }
+      }}
+
+
+void Cardu::selfAlign(){
+  if(get_gyro() > 8){
+    turnR(30);
+  }
+  else if(get_gyro()< -8){
+    turnL(30);
+  }
+  else{
+    stop();
+  }
 }

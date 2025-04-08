@@ -2,6 +2,7 @@
 #include <Adafruit_TCS34725.h>
 #include <Adafruit_VCNL4040.h>
 #include "Cardu.h"
+#include <LiquidCrystal_I2C.h>
 // Create an instance of the sensor
 
 Adafruit_VCNL4040 vcnl4040 = Adafruit_VCNL4040();
